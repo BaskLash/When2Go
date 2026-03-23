@@ -4,7 +4,7 @@ import TimeWindow from "./components/TimeWindow";
 import ResultSummary from "./components/ResultSummary";
 import Timeline from "./components/Timeline";
 
-const API_BASE = process.env.REACT_APP_API_URL || "";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export default function App() {
   const [origin, setOrigin] = useState("");
