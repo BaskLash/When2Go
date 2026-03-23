@@ -144,7 +144,8 @@ async def analyze_route(req: AnalyzeRequest):
         raise HTTPException(status_code=400, detail=f"Invalid time format: {exc}")
 
     if window_end <= window_start:
-        raise HTTPException(status_code=400, detail="end_time must be after start_time")
+        # Handle overnight windows (e.g. 22:00 → 02:00) or end_time before current time
+        window_end += timedelta(days=1)
 
     # Build departure slots (every SIMULATION_INTERVAL_MIN minutes)
     slots: list[datetime] = []
