@@ -2,9 +2,7 @@
 When2Go – FastAPI backend
 Helps users decide WHEN to leave to minimize travel time.
 """
-import asyncio
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -84,38 +82,72 @@ def _floor_to_bucket(dt: datetime, bucket_minutes: int = 10) -> int:
     return (total // bucket_minutes) * bucket_minutes
 
 
-async def _fetch_with_cache(
+def _demo_duration(departure_dt: datetime) -> int:
+    """Return a plausible synthetic duration (seconds) for demo/UI testing."""
+    import random
+    base = 40 * 60
+    noise = random.randint(-10, 10) * 60
+    hour = departure_dt.hour
+    if 7 <= hour < 9 or 17 <= hour < 19:
+        noise += random.randint(10, 20) * 60
+    return max(10 * 60, base + noise)
+
+
+async def _resolve_slots(
     origin: str,
     destination: str,
-    departure_dt: datetime,
+    slots: list[datetime],
     api_key: str,
-) -> Optional[int]:
-    """Fetch travel duration (seconds) using cache where possible."""
-    day_of_week = departure_dt.weekday()
-    time_bucket = _floor_to_bucket(departure_dt)
-    departure_ts = int(departure_dt.timestamp())
+) -> dict[datetime, Optional[int]]:
+    """
+    Return a {slot -> duration_seconds} mapping for every slot.
 
-    cached = cache_module.get(origin, destination, day_of_week, time_bucket)
-    if cached is not None:
-        return cached
+    Strategy:
+      1. Serve all slots that are already in cache immediately.
+      2. Collect the remaining (cache-miss) slots.
+      3. Issue a single batched call to the Routes Matrix API for all misses
+         (requests still run concurrently inside maps.get_durations_matrix).
+      4. Store new results in cache before returning.
+    """
+    hit: dict[datetime, int] = {}
+    miss: list[datetime] = []
 
-    if not api_key:
-        # Demo mode: return a plausible random-ish duration for testing UI
-        import random
-        base = 40 * 60  # 40 min base
-        noise = random.randint(-10, 10) * 60
-        hour = departure_dt.hour
-        # Simulate rush-hour pattern
-        if 7 <= hour < 9 or 17 <= hour < 19:
-            noise += random.randint(10, 20) * 60
-        value = max(10 * 60, base + noise)
-        cache_module.set(origin, destination, day_of_week, time_bucket, value, ttl=CACHE_TTL)
-        return value
+    for slot in slots:
+        cached = cache_module.get(
+            origin, destination, slot.weekday(), _floor_to_bucket(slot)
+        )
+        if cached is not None:
+            hit[slot] = cached
+        else:
+            miss.append(slot)
 
-    value = await maps.get_duration_in_traffic(origin, destination, departure_ts, api_key)
-    if value is not None:
-        cache_module.set(origin, destination, day_of_week, time_bucket, value, ttl=CACHE_TTL)
-    return value
+    fresh: dict[int, Optional[int]] = {}
+
+    if miss:
+        if not api_key:
+            # Demo mode – synthesise durations, no API needed.
+            fresh = {int(s.timestamp()): _demo_duration(s) for s in miss}
+        else:
+            fresh = await maps.get_durations_matrix(
+                origin,
+                destination,
+                [int(s.timestamp()) for s in miss],
+                api_key,
+            )
+
+    # Persist new results and build final mapping.
+    result: dict[datetime, Optional[int]] = dict(hit)
+    for slot in miss:
+        ts = int(slot.timestamp())
+        value = fresh.get(ts)
+        if value is not None:
+            cache_module.set(
+                origin, destination, slot.weekday(), _floor_to_bucket(slot),
+                value, ttl=CACHE_TTL,
+            )
+        result[slot] = value
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +189,14 @@ async def analyze_route(req: AnalyzeRequest):
     if not slots:
         raise HTTPException(status_code=400, detail="No departure slots in the given window")
 
-    # Fetch all durations concurrently
-    tasks = [
-        _fetch_with_cache(req.origin, req.destination, slot, GOOGLE_MAPS_API_KEY)
-        for slot in slots
-    ]
-    results = await asyncio.gather(*tasks)
+    # Resolve all slots: cache hits served immediately, misses batched to API.
+    slot_durations = await _resolve_slots(
+        req.origin, req.destination, slots, GOOGLE_MAPS_API_KEY
+    )
 
     # Build timeline (only slots with valid results)
     timeline: list[TimelineEntry] = []
-    for slot, duration_sec in zip(slots, results):
+    for slot, duration_sec in ((s, slot_durations[s]) for s in slots):
         if duration_sec is None:
             continue
         timeline.append(
