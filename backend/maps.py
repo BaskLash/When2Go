@@ -6,7 +6,7 @@ import httpx
 from datetime import datetime, timezone
 from typing import Optional
 
-COMPUTE_ROUTES_URL = "https://routes.googleapis.com/directions/v2/computeRoutes"
+COMPUTE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 
 
 async def get_duration_in_traffic(
