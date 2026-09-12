@@ -1,5 +1,10 @@
 # When2Go
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.10%2B-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-18-149eca?logo=react)](https://react.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-38bdf8?logo=tailwindcss)](https://tailwindcss.com/)
+
 > **Find the best time to leave. Beat traffic. Save time.**
 
 When2Go helps you decide *when* to depart by simulating multiple departure times and comparing expected travel durations using real traffic data. It answers:
@@ -144,3 +149,15 @@ When2Go/
 ├── .gitignore
 └── README.md
 ```
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE) © 2026 Olivier Lüthy. You're free to use, modify and distribute this
+software, including commercially, as long as the copyright notice and license are included.
+
+## Author
+
+Built by **Olivier Lüthy** — [GitHub](https://github.com/olivierluethy).
+
